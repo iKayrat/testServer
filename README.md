@@ -26,7 +26,7 @@ type Room struct {
 // func getFromRedis() ([]Server, error) {...}
 
 // * Основная логика
-func newRoom(room Room, servers []Server) string {
+func newRoom(room Room) string {
   ...
 }
 
@@ -60,55 +60,79 @@ func RandomInt(min, max int) int {
 ## Основная часть
 
 ```go
-func newRoom(room Room, servers []Server) string {
+func newRoom(room Room) string {
 
+	// IT'S COMMENTED, BECAUSE WE USE GLOBAL VARIABLE - "servers"
 	// servers:=getFromRedis()
 
 	// temporary server to find maximum cpu usage
-	maxServer := Server{}
+	suitServer := Server{}
 
-	// Find available server with maximum CPU Usage
+	// initializing duration per CPU Usage
+	cpuUsage := 0
+	if room.Duration == 60 {
+		cpuUsage = 80
+	} else {
+		cpuUsage = 120
+	}
+
+	// Find available server by CPU Usage
 	for _, server := range servers {
 
-		// if has rooms
-		if len(server.Rooms) != 0 {
-			// if usage fit in server capacity
-			hasMinUsage := server.CPUusage+ProbableMaximumUsageCPU <= server.CPUcapacity
-			if hasMinUsage && server.CPUusage > maxServer.CPUusage && server.Status {
-				maxServer = server
+		isAvailable := server.CPUusage+cpuUsage <= server.CPUcapacity
+		length := len(server.Rooms)
+
+		if server.Status {						//search (running) servers:
+
+			switch {
+			case isAvailable && length != 0:			//-according to its cpuUsage and existing room
+				suitServer = server
+
+			case isAvailable && length == 0:			//-according to its cpuUsage and no existing room
+				suitServer = server
 
 			}
-			// if has no rooms
-		} else if server.Status {
-			maxServer = server
+		} else {							//if not found suitable server yet
+			if !server.Status && suitServer.Address == "" {		//-according to existing not running server
+				server.Status = true
+				suitServer = server
+			}
 		}
+	}
+
+	if suitServer.Address == "" && suitServer.CPUcapacity == 0 {		// if not found above cases, we creaate new server
+		suitServer.Address = "newserver"
+		suitServer.CPUcapacity = 800
+		suitServer.Status = true
+
+		servers = append(servers, suitServer)				// and add to server list
 	}
 
 	// add Room to found server
-	maxServer.Rooms = append(maxServer.Rooms, Room{Id: room.Id, Duration: room.Duration})
+	suitServer.Rooms = append(suitServer.Rooms, Room{Id: room.Id, Duration: room.Duration})
 
 	// random cpu usage
-	cpuUsage := RandomInt(ProbableMinimumUsageCPU, ProbableMaximumUsageCPU)
-	maxServer.CPUusage += cpuUsage
+	suitServer.CPUusage += cpuUsage
 
 	for i := 0; i < len(servers); i++ {
 
-		// find servers with no rooms and turn off
+		// find servers with no rooms and turn off			//turn off left servers with no rooms if exists
 		if len(servers[i].Rooms) == 0 {
+			servers[i].CPUusage = 0
 			servers[i].Status = false
 		}
 
-		// update choosed server
-		if servers[i].Address == maxServer.Address {
-			servers[i].Address = maxServer.Address
-			servers[i].CPUcapacity = maxServer.CPUcapacity
+		// update chosen server
+		if servers[i].Address == suitServer.Address {
+			servers[i].Address = suitServer.Address
+			servers[i].CPUcapacity = suitServer.CPUcapacity
 			servers[i].CPUusage += cpuUsage
-			servers[i].Status = maxServer.Status
-			servers[i].Rooms = maxServer.Rooms
+			servers[i].Status = suitServer.Status
+			servers[i].Rooms = suitServer.Rooms
 		}
 	}
 
-	return maxServer.Address
+	return suitServer.Address
 }
 ```
 
@@ -116,9 +140,31 @@ func newRoom(room Room, servers []Server) string {
 ## Запуск тестов
 
 Для запуска тестов выполните следующую команду
+* Выполните тесты одиночно, возможность переполнение (глобальной переменной) __servers__,
 ```bash
 go test
 ```
 ```bash
 go test -v -cover -short ./...
+```
+## Тесты
+обычный запись комнаты:
+```go
+func TestHasRooms(t *testing.T) {...}
+```
+заполняет один из серверов, переходит на другой сервер с комнатами:
+```go
+func TestServer4Full(t *testing.T) {...}
+```
+записывает в сервер с пустой комнатой, в случае все серверы уже имеющие комнаты заполнены:
+```go
+func TestNoRooms(t *testing.T) {...}
+```
+тест на включения имеющего сервера и запись комнаты, в случае все работающие серверы заполнены:
+```go
+func TestNoAnyRunningServer(t *testing.T) {...}
+```
+тест на создание нового сервера, в случае все остальные серверы заполнены:
+```go
+func TestNoAnyServer(t *testing.T) {...}
 ```
