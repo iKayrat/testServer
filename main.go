@@ -60,7 +60,7 @@ func newRoom(room Room) string {
 	// IT'S COMMENTED, BECAUSE WE USE GLOBAL VARIABLE - "servers"
 	// servers:=getFromRedis()
 
-	// temporary server to find maximum cpu usage
+	// temporary server to find suitable server
 	suitServer := Server{}
 
 	cpuUsage := 0
